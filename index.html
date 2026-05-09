@@ -686,8 +686,8 @@ alter publication supabase_realtime add table comprobantes;
 alter publication supabase_realtime add table notificaciones;`;
 
 // ─── SUPABASE CREDENTIALS ────────────────────
-let SB_URL = localStorage.getItem('sb_url') || '';
-let SB_KEY  = localStorage.getItem('sb_key')  || '';
+let SB_URL = 'https://rflzbopbnrocbqvuuhtw.supabase.co';
+let SB_KEY  = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJmbHpib3BibnJvY2JxdnV1aHR3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyNTg3NTAsImV4cCI6MjA5MzgzNDc1MH0.JSH-uLIVuBoO6fIwywjvt3GdVfOpmepXzcA7H-0bTlE';
 let sb = null;
 
 // ─── APP STATE ───────────────────────────────
@@ -771,8 +771,6 @@ async function guardarConfigSupabase() {
   errEl.textContent = '';
   if (!url || !key) { errEl.textContent = '❌ Ingresa URL y clave anon'; return; }
   errEl.textContent = '⏳ Conectando...';
-  localStorage.setItem('sb_url', url);
-  localStorage.setItem('sb_key', key);
   SB_URL = url; SB_KEY = key;
   await conectarSupabase();
 }
@@ -782,7 +780,6 @@ window.onload = async () => {
   document.getElementById('mainApp').style.display = 'none';
   document.getElementById('loginOverlay').style.display = 'none';
   document.getElementById('sqlDisplay').textContent = SQL_SETUP;
-  if (!SB_URL || !SB_KEY) { mostrarSetup(); return; }
   await conectarSupabase();
 };
 
