@@ -505,6 +505,7 @@ tr:hover td { background: var(--cream); }
           <div class="form-grid" style="max-width:600px;">
             <div class="field"><label>Tipo de cambio (TC) USD→MXN</label><input type="number" id="cfgTC" step="0.01" min="1"></div>
             <div class="field"><label>Comisión global (%)</label><input type="number" id="cfgComision" step="1" min="0" max="100"></div>
+            <div class="field"><label>IVA El Paso TX (%)</label><input type="number" id="cfgIvaElPaso" step="0.01" min="0" max="20"></div>
             <div class="field"><label>Descuento Hora Feliz (%)</label><input type="number" id="cfgDescuentoHH" step="1" min="0" max="100"></div>
             <div class="field"><label>Cambiar clave admin</label><input type="password" id="cfgNuevaPass" placeholder="Nueva clave"></div>
           </div>
@@ -692,7 +693,7 @@ let sb = null;
 
 // ─── APP STATE ───────────────────────────────
 let ventas = [], usuarios = [], comprobantes = {};
-let cfg = { TC: 17.40, comisionGlobal: 10, horaFelizActiva: false, descuentoHH: 10 };
+let cfg = { TC: 17.40, comisionGlobal: 10, horaFelizActiva: false, descuentoHH: 10, ivaElPaso: 8.25 };
 let usuarioActual = null;
 let realtimeChannel = null;
 let notifChannel = null;
@@ -830,6 +831,7 @@ async function loadData() {
     cfg.comisionGlobal = d.comision_global ?? cfg.comisionGlobal;
     cfg.horaFelizActiva = d.hora_feliz_activa ?? cfg.horaFelizActiva;
     cfg.descuentoHH = d.descuento_hh ?? cfg.descuentoHH;
+    cfg.ivaElPaso = d.iva_el_paso ?? cfg.ivaElPaso;
   }
   ventas = (ventasRes.data || []).map(normalizeVenta);
   usuarios = (usuariosRes.data || []).map(normalizeUsuario);
@@ -848,6 +850,7 @@ function setupRealtime() {
         cfg.comisionGlobal = data.comision_global ?? cfg.comisionGlobal;
         cfg.horaFelizActiva = data.hora_feliz_activa ?? cfg.horaFelizActiva;
         cfg.descuentoHH = data.descuento_hh ?? cfg.descuentoHH;
+        cfg.ivaElPaso = data.iva_el_paso ?? cfg.ivaElPaso;
         syncUI(); if (usuarioActual) refreshCurrentView();
       }
     })
@@ -886,13 +889,14 @@ function refreshCurrentView() {
 }
 
 // ─── CÁLCULOS ────────────────────────────────
+function precioConTax(precioUSD) { return precioUSD * (1 + cfg.ivaElPaso / 100); }
 function calcTotal(precioUSD, pzas) {
-  let base = precioUSD * pzas * cfg.TC;
+  let base = precioConTax(precioUSD) * pzas * cfg.TC;
   let total = base * (1 + cfg.comisionGlobal / 100);
   if (cfg.horaFelizActiva) total *= (1 - cfg.descuentoHH / 100);
   return total;
 }
-function calcBase(precioUSD, pzas) { return precioUSD * pzas * cfg.TC; }
+function calcBase(precioUSD, pzas) { return precioConTax(precioUSD) * pzas * cfg.TC; }
 function calcComision(precioUSD, pzas) { return calcBase(precioUSD, pzas) * cfg.comisionGlobal / 100; }
 function fmt(n) { return '$' + Number(n).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
 
@@ -1111,7 +1115,11 @@ function actualizarPreviewPrecio() {
   const usd = parseFloat(document.getElementById('precioUSD')?.value);
   const pzas = parseInt(document.getElementById('pzas')?.value) || 1;
   if (isNaN(usd) || usd <= 0) { document.getElementById('previewPrecio').innerHTML = ''; return; }
-  document.getElementById('previewPrecio').innerHTML = `💡 Total estimado: <strong>${fmt(calcTotal(usd, pzas))} MXN</strong> (TC: ${cfg.TC} | Com: ${cfg.comisionGlobal}%${cfg.horaFelizActiva ? ` | HH -${cfg.descuentoHH}%` : ''})`;
+  const usdConTax = precioConTax(usd);
+  const tax = usd * cfg.ivaElPaso / 100;
+  document.getElementById('previewPrecio').innerHTML =
+    `💡 $${usd.toFixed(2)} USD + IVA El Paso ${cfg.ivaElPaso}% (<em>+$${tax.toFixed(2)}</em>) = $${usdConTax.toFixed(2)} USD → <strong>${fmt(calcTotal(usd, pzas))} MXN</strong> ` +
+    `<span style="color:var(--plum-light)">(TC: ${cfg.TC} | Com: ${cfg.comisionGlobal}%${cfg.horaFelizActiva ? ` | HH -${cfg.descuentoHH}%` : ''})</span>`;
 }
 
 // ─── ADMIN: VER CLIENTE ───────────────────────
@@ -1319,7 +1327,7 @@ function actualizarCompBadge() {
 // ─── CONFIG ───────────────────────────────────
 function syncUI() {
   if (usuarioActual?.rol !== 'admin') return;
-  const fields = { cfgTC: cfg.TC, cfgComision: cfg.comisionGlobal, cfgDescuentoHH: cfg.descuentoHH };
+  const fields = { cfgTC: cfg.TC, cfgComision: cfg.comisionGlobal, cfgDescuentoHH: cfg.descuentoHH, cfgIvaElPaso: cfg.ivaElPaso };
   Object.entries(fields).forEach(([id, val]) => { const el = document.getElementById(id); if (el) el.value = val; });
   const badge = document.getElementById('estadoHHBadge');
   if (badge) badge.innerHTML = cfg.horaFelizActiva
@@ -1333,6 +1341,7 @@ async function guardarConfig() {
     tc: parseFloat(document.getElementById('cfgTC').value) || cfg.TC,
     comision_global: parseFloat(document.getElementById('cfgComision').value) || cfg.comisionGlobal,
     descuento_hh: parseFloat(document.getElementById('cfgDescuentoHH').value) || cfg.descuentoHH,
+    iva_el_paso: parseFloat(document.getElementById('cfgIvaElPaso').value) ?? cfg.ivaElPaso,
   };
   if (nuevaPass) {
     if (nuevaPass.length < 6) { toast('La clave debe tener al menos 6 caracteres', 'error'); return; }
@@ -1404,15 +1413,22 @@ function renderCliente() {
   const activos = misProductos.filter(v => v.estado !== 'cancelado');
   const ejemplo = activos.find(v => v.estado !== 'pagado');
   if (ejemplo) {
+    const usdConTax = precioConTax(ejemplo.precioUSD);
+    const tax = ejemplo.precioUSD * cfg.ivaElPaso / 100;
     const base = calcBase(ejemplo.precioUSD, ejemplo.pzas);
     const com = calcComision(ejemplo.precioUSD, ejemplo.pzas);
-    const sub = base + com;
-    const desc = cfg.horaFelizActiva ? sub * cfg.descuentoHH / 100 : 0;
+    const desc = cfg.horaFelizActiva ? (base + com) * cfg.descuentoHH / 100 : 0;
     document.getElementById('desgloseContent').innerHTML = `
       <strong>💱 TC actual:</strong> $${cfg.TC} MXN/USD<br>
+      <strong>🏪 IVA El Paso TX:</strong> ${cfg.ivaElPaso}% (se agrega al precio de tienda)<br>
       <strong>Comisión:</strong> ${cfg.comisionGlobal}%${cfg.horaFelizActiva ? ` | 🎉 Hora Feliz -${cfg.descuentoHH}%` : ''}<br>
       <hr style="border:none;border-top:1px solid rgba(181,86,110,0.2);margin:10px 0;">
-      Ej: ${ejemplo.producto} × ${ejemplo.pzas} → Base: ${fmt(base)} + Com: ${fmt(com)}${cfg.horaFelizActiva ? ` - Desc: ${fmt(desc)}` : ''}<br>
+      Ej: ${ejemplo.producto} × ${ejemplo.pzas}<br>
+      &nbsp;&nbsp;Precio tienda: $${ejemplo.precioUSD.toFixed(2)} USD<br>
+      &nbsp;&nbsp;+ IVA ${cfg.ivaElPaso}%: +$${(tax * ejemplo.pzas).toFixed(2)} USD → $${(usdConTax * ejemplo.pzas).toFixed(2)} USD<br>
+      &nbsp;&nbsp;× TC $${cfg.TC}: ${fmt(base)}<br>
+      &nbsp;&nbsp;+ Comisión ${cfg.comisionGlobal}%: +${fmt(com)}<br>
+      ${cfg.horaFelizActiva ? `&nbsp;&nbsp;- Desc. HH: -${fmt(desc)}<br>` : ''}
       = <span class="desglose-total">${fmt(ejemplo.totalMXN)}</span>`;
   } else {
     document.getElementById('desgloseContent').innerHTML = 'Sin productos activos.';
